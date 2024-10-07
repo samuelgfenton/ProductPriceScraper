@@ -3,3 +3,4 @@ loaded-page.png
 node_modules/
 dist/ServiceAccountKey.json
 src/ServiceAccountKey.json
+page-snapshot.html

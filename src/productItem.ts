@@ -12,9 +12,11 @@ interface ProductItemRetailerLink {
   latestPrice?: number;
   retailerWouldSell: boolean;
   lastScraped?: Date;
+  packId: number;
 
   // Method to convert retailer data to a Firestore-compatible format
   toFirestore(): object;
+  getComboString(): string;
 }
 
 class RetailerImpl implements ProductItemRetailerLink {
@@ -22,7 +24,8 @@ class RetailerImpl implements ProductItemRetailerLink {
   urlParameters?: string;
   latestPrice?: number;
   retailerWouldSell: boolean;
-  lastScraped?: Date; // Field for last scraped timestamp
+  lastScraped?: Date;
+  packId: number;
 
   constructor(data: any) {
     this.retailerId = data.retailerId;
@@ -38,6 +41,13 @@ class RetailerImpl implements ProductItemRetailerLink {
         ? new Date(data.lastScraped)
         : undefined; // Handle already-converted date or undefined
     }
+
+    this.packId = data.packId || 1;
+  }
+
+  getComboString(): string {
+    const packDivider: string = "__PK__";
+    return `${this.retailerId}${packDivider}${this.packId}`;
   }
 
   // Convert the retailer data to a Firestore-compatible object
@@ -50,6 +60,7 @@ class RetailerImpl implements ProductItemRetailerLink {
       lastScraped: this.lastScraped
         ? Timestamp.fromDate(this.lastScraped)
         : null, // Save lastScraped as Firestore Timestamp
+      packId: this.packId,
     };
   }
 }
@@ -75,7 +86,9 @@ export class ProductItem {
 
     // Iterate through all retailers and update prices and lastScraped in memory
     for (const retailer of this.retailers) {
-      console.log(`Processing retailer: ${retailer.retailerId}`);
+      console.log(
+        `Processing retailer: ${retailer.retailerId} for pack ${retailer.packId}`
+      );
 
       const priceScraped = await this.getPriceForRetailer(retailer);
 
@@ -104,7 +117,7 @@ export class ProductItem {
   ): Promise<boolean> {
     if (!retailer.urlParameters) {
       console.log(
-        `No URL parameters provided for retailer: ${retailer.retailerId}`
+        `No URL parameters provided for retailer: ${retailer.retailerId} with pack id ${retailer.packId}`
       );
       return false;
     }
@@ -125,14 +138,16 @@ export class ProductItem {
       // If the last scraped date is today, skip scraping
       if (lastScrapedDate.getTime() === today.getTime()) {
         console.log(
-          `Skipping retailer ${retailer.retailerId} as it was already scraped today.`
+          `Skipping retailer ${retailer.retailerId} for pack  ${retailer.packId} as it was already scraped today.`
         );
         return false;
       }
     }
 
     try {
-      console.log(`Fetching price for retailer: ${retailer.retailerId}`);
+      console.log(
+        `Fetching price for retailer: ${retailer.retailerId} with pack ${retailer.packId}`
+      );
       // Pass the retailerId and URL to the scrapePrice function
       const price = await scrapePrice(
         retailer.retailerId,
@@ -142,7 +157,7 @@ export class ProductItem {
       retailer.lastScraped = new Date(); // Set the current timestamp as last scraped
 
       console.log(
-        `Price for ${retailer.retailerId}: ${price}. Last scraped: ${retailer.lastScraped}`
+        `Price for ${retailer.retailerId} with pack ${retailer.packId}: ${price}. Last scraped: ${retailer.lastScraped}`
       );
       return true; // Return true if a price was scraped
     } catch (error) {
@@ -197,7 +212,8 @@ export class ProductItem {
     this.retailers.forEach((retailer) => {
       if (retailer.latestPrice !== undefined) {
         historyData[currentDate] = historyData[currentDate] || {};
-        historyData[currentDate][retailer.retailerId] = retailer.latestPrice;
+        historyData[currentDate][retailer.getComboString()] =
+          retailer.latestPrice;
       }
     });
 
