@@ -3,6 +3,7 @@ import {
   Timestamp,
   CollectionReference,
 } from "@google-cloud/firestore";
+import moment from "moment-timezone";
 import db from "./firebaseConfig"; // Assuming firebaseConfig is where your Firestore instance is set up
 import { scrapePrice } from "./scrapePrice";
 
@@ -12,6 +13,7 @@ interface ProductItemRetailerLink {
   latestPrice?: number;
   retailerWouldSell: boolean;
   lastScraped?: Date;
+  errorOnLastScrap: boolean;
   packId: number;
 
   // Method to convert retailer data to a Firestore-compatible format
@@ -26,12 +28,15 @@ class RetailerImpl implements ProductItemRetailerLink {
   retailerWouldSell: boolean;
   lastScraped?: Date;
   packId: number;
+  errorOnLastScrap: boolean;
 
   constructor(data: any) {
     this.retailerId = data.retailerId;
     this.urlParameters = data.urlParameters;
     this.latestPrice = data.latestPrice;
     this.retailerWouldSell = data.retailerWouldSell;
+    this.errorOnLastScrap =
+      data.errorOnLastScrap == undefined ? false : data.errorOnLastScrap;
 
     // Convert lastScraped from Firestore Timestamp to Date if necessary
     if (data.lastScraped instanceof Timestamp) {
@@ -61,6 +66,7 @@ class RetailerImpl implements ProductItemRetailerLink {
         ? Timestamp.fromDate(this.lastScraped)
         : null, // Save lastScraped as Firestore Timestamp
       packId: this.packId,
+      errorOnLastScrap: this.errorOnLastScrap,
     };
   }
 }
@@ -70,6 +76,7 @@ export class ProductItem {
   image: string;
   retailers: ProductItemRetailerLink[];
   private snapshot?: DocumentSnapshot; // Store the Firestore DocumentSnapshot
+  needToSave: boolean = false;
 
   constructor(data: any, snapshot?: DocumentSnapshot) {
     this.name = data.name || "";
@@ -81,43 +88,40 @@ export class ProductItem {
   }
 
   // Method to iterate through retailers and call a method to get the price
-  async processRetailers(): Promise<void> {
-    let scraped = false; // Flag to check if any prices were scraped
+  async scrapePriceForRetailerPacks(): Promise<void> {
+    this.needToSave = false; // Flag to check if any prices were scraped
 
     // Iterate through all retailers and update prices and lastScraped in memory
-    for (const retailer of this.retailers) {
-      console.log(
-        `Processing retailer: ${retailer.retailerId} for pack ${retailer.packId}`
-      );
+    for (const retailerLink of this.retailers) {
+      // console.log(
+      //   `Processing retailer: ${retailer.retailerId} for pack ${retailer.packId}`
+      // );
 
-      const priceScraped = await this.getPriceForRetailer(retailer);
+      const priceScraped = await this.getPriceForRetailer(retailerLink);
 
-      // If a price was scraped, set the flag to true
-      if (priceScraped) {
-        scraped = true;
-      }
+      console.log(`priceScraped: ${priceScraped}`);
     }
 
     // After processing all retailers, only save if at least one price was scraped
-    if (scraped) {
-      await this.saveToFirestore();
-
+    if (this.needToSave) {
       // After saving the product item, update the history document
       await this.updateHistory();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await this.saveToFirestore();
     } else {
-      console.log(
-        "No prices scraped, skipping Firestore save and history update."
-      );
+      // console.log(
+      //   "No prices scraped, skipping Firestore save and history update."
+      // );
     }
   }
 
   // Method to get the price for a specific retailer using Puppeteer
   async getPriceForRetailer(
-    retailer: ProductItemRetailerLink
+    retailerLink: ProductItemRetailerLink
   ): Promise<boolean> {
-    if (!retailer.urlParameters) {
+    if (!retailerLink.urlParameters) {
       console.log(
-        `No URL parameters provided for retailer: ${retailer.retailerId} with pack id ${retailer.packId}`
+        `No URL parameters provided for retailer: ${retailerLink.retailerId} with pack id ${retailerLink.packId}`
       );
       return false;
     }
@@ -125,46 +129,57 @@ export class ProductItem {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Get today's date without time
 
-    console.log(`Retailer last scraped at ${retailer.lastScraped}`);
+    // console.log(`Retailer last scraped at ${retailer.lastScraped}`);
 
-    if (retailer.lastScraped) {
+    if (retailerLink.lastScraped) {
       // Create a date object for lastScraped without time
       const lastScrapedDate = new Date(
-        retailer.lastScraped.getFullYear(),
-        retailer.lastScraped.getMonth(),
-        retailer.lastScraped.getDate()
+        retailerLink.lastScraped.getFullYear(),
+        retailerLink.lastScraped.getMonth(),
+        retailerLink.lastScraped.getDate()
       );
 
       // If the last scraped date is today, skip scraping
       if (lastScrapedDate.getTime() === today.getTime()) {
-        console.log(
-          `Skipping retailer ${retailer.retailerId} for pack  ${retailer.packId} as it was already scraped today.`
-        );
+        // console.log(
+        //   `Skipping retailer ${retailer.retailerId} for pack  ${retailer.packId} as it was already scraped today.`
+        // );
         return false;
       }
     }
 
+    retailerLink.lastScraped = new Date(); // Set the current timestamp as last scraped
+
     try {
       console.log(
-        `Fetching price for retailer: ${retailer.retailerId} with pack ${retailer.packId}`
+        `Fetching price for retailer: ${retailerLink.retailerId} with pack ${retailerLink.packId}`
       );
       // Pass the retailerId and URL to the scrapePrice function
       const price = await scrapePrice(
-        retailer.retailerId,
-        retailer.urlParameters
+        retailerLink.retailerId,
+        retailerLink.urlParameters
       );
-      retailer.latestPrice = price;
-      retailer.lastScraped = new Date(); // Set the current timestamp as last scraped
+      console.log(`Got price ${price}`);
+      retailerLink.latestPrice = price;
 
       console.log(
-        `Price for ${retailer.retailerId} with pack ${retailer.packId}: ${price}. Last scraped: ${retailer.lastScraped}`
+        `Price for ${retailerLink.retailerId} with pack ${retailerLink.packId}: ${price}. Last scraped: ${retailerLink.lastScraped}`
       );
+
+      retailerLink.errorOnLastScrap = price === null;
+      console.log(
+        `retailerLink.errorOnLastScrap: ${retailerLink.errorOnLastScrap}`
+      );
+
+      this.needToSave = true;
       return true; // Return true if a price was scraped
     } catch (error) {
       console.error(
-        `Failed to fetch price for retailer: ${retailer.retailerId}`,
+        `Failed to fetch price for retailer: ${retailerLink.retailerId}`,
         error
       );
+      retailerLink.errorOnLastScrap = true;
+      this.needToSave = true;
       return false; // Return false if there was an error
     }
   }
@@ -203,14 +218,20 @@ export class ProductItem {
       return;
     }
 
-    const currentDate = new Date().toISOString().split("T")[0]; // Get current date in 'YYYY-MM-DD' format
-    const quarterId = this.getQuarterId(new Date()); // Get current quarter ID
+    // Set the time zone for Australia (Sydney)
+    const currentDate = moment.tz("Australia/Sydney").format("YYYY-MM-DD");
+    const yearId = this.getYearId(new Date()); // Get current quarter ID
+
+    console.log(`currentDate: ${currentDate}`);
 
     // Create history data structure
     const historyData: { [date: string]: { [retailerId: string]: number } } =
       {};
     this.retailers.forEach((retailer) => {
-      if (retailer.latestPrice !== undefined) {
+      if (
+        retailer.latestPrice !== undefined &&
+        retailer.errorOnLastScrap === false
+      ) {
         historyData[currentDate] = historyData[currentDate] || {};
         historyData[currentDate][retailer.getComboString()] =
           retailer.latestPrice;
@@ -223,7 +244,7 @@ export class ProductItem {
         .collection("ProductItems")
         .doc(this.snapshot.id)
         .collection("History")
-        .doc(quarterId);
+        .doc(yearId);
 
       try {
         // Use transaction to ensure atomic updates to history document
@@ -242,7 +263,7 @@ export class ProductItem {
         });
 
         console.log(
-          `History updated successfully for product item ${this.name} in quarter ${quarterId}.`
+          `History updated successfully for product item ${this.name} in quarter ${yearId}.`
         );
       } catch (error) {
         console.error(
@@ -254,24 +275,9 @@ export class ProductItem {
   }
 
   // Method to get the current financial quarter ID
-  getQuarterId(date: Date): string {
+  getYearId(date: Date): string {
     const year = date.getFullYear();
-    let quarter: number;
 
-    // Australian financial year starts from July (Q1: Jul-Sep, Q2: Oct-Dec, Q3: Jan-Mar, Q4: Apr-Jun)
-    if (date.getMonth() >= 6 && date.getMonth() <= 8) {
-      quarter = 1; // Jul-Sep
-    } else if (date.getMonth() >= 9 && date.getMonth() <= 11) {
-      quarter = 2; // Oct-Dec
-    } else if (date.getMonth() >= 0 && date.getMonth() <= 2) {
-      quarter = 3; // Jan-Mar (next year)
-    } else {
-      quarter = 4; // Apr-Jun (next year)
-    }
-
-    // If the date is in Q3 or Q4, increment the financial year
-    const financialYear = quarter === 3 || quarter === 4 ? year + 1 : year;
-
-    return `Q${quarter}${financialYear}`;
+    return `${year}`;
   }
 }

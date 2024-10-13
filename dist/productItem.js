@@ -70,7 +70,7 @@ class ProductItem {
             const timeDifference = now.getTime() - retailer.lastScraped.getTime();
             const hoursDifference = timeDifference / (1000 * 60 * 60);
             if (hoursDifference < 12) {
-                console.log(`Skipping retailer ${retailer.retailerId} as it was scraped ${hoursDifference.toFixed(2)} hours ago.`);
+                // console.log(`Skipping retailer ${retailer.retailerId} as it was scraped ${hoursDifference.toFixed(2)} hours ago.`);
                 return;
             }
         }

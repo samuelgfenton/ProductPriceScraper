@@ -30,21 +30,32 @@ export async function scrapePetbarn(url: string): Promise<number> {
     // Navigate to the URL
     await page.goto(url, { waitUntil: "networkidle2" });
 
-    // Wait for the price element to appear (adjust selector if needed)
-    const priceSelector = ".repeat-delivery__price";
-    await page.waitForSelector(priceSelector, { timeout: 100000 });
+    await new Promise((resolve) => setTimeout(resolve, 4000));
 
-    // Extract the price
-    const priceElement = await page.$(priceSelector);
-    if (!priceElement) {
-      throw new Error(`Price element not found on the page for Coles.`);
-    }
-    const priceText = await priceElement.evaluate((el) => el.textContent);
-    const price = parseFloat(priceText?.replace(/[^0-9.-]+/g, "") || "0");
+    let visiblePrice = null;
+    // Get the price from the correct div
+    visiblePrice = await page.evaluate(() => {
+      const activePromoDiv = document.querySelector(
+        ".promo-price-list-product.active"
+      );
 
-    return price;
+      if (activePromoDiv) {
+        const priceElement = activePromoDiv.querySelector(
+          ".repeat-delivery__price"
+        );
+
+        if (priceElement && priceElement.textContent) {
+          const priceText = priceElement.textContent?.trim() || ""; // Handle null textContent
+          return parseFloat(priceText.replace("$", "").replace(",", "")); // Clean up the price text and convert to number
+        }
+      }
+
+      return null;
+    });
+
+    return visiblePrice!;
   } catch (error) {
-    console.error(`Error scraping price from URL: ${url} for Coles`, error);
+    console.error(`Error scraping price from URL: ${url} for Petbarn`, error);
     throw error;
   } finally {
     await browser.close(); // Ensure browser is closed in case of error

@@ -36,13 +36,13 @@ async function fetchAndProcessProductItems(): Promise<void> {
     // Process each ProductItem document
     for (const doc of snapshot.docs) {
       const data = doc.data();
-      console.log(`Processing product item: ${data.name}`);
+      // console.log(`Processing product item: ${data.name}`);
 
       // Create a ProductItem object with the DocumentSnapshot
       const productItem = new ProductItem(data, doc);
 
       // Async iterate through each retailer linked to the item
-      await productItem.processRetailers();
+      await productItem.scrapePriceForRetailerPacks();
     }
 
     console.log("Finished processing all product items.");
@@ -96,6 +96,9 @@ async function monitorScraperState(): Promise<void> {
           console.log(`Scraper state changed: ${scraperState}`);
 
           if (scraperState === "Pending") {
+            // Immediately update the ScraperState to 'Scraping' asynchronously
+            updateScraperState("Scraping").catch(console.error);
+
             console.log("Scraper state is 'Pending'. Starting the scraper...");
             fetchAndProcessProductItems().catch(console.error);
           }
