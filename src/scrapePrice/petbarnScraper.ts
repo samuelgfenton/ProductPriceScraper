@@ -30,7 +30,7 @@ export async function scrapePetbarn(url: string): Promise<number> {
     // Navigate to the URL
     await page.goto(url, { waitUntil: "networkidle2" });
 
-    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     let visiblePrice = null;
     // Get the price from the correct div
@@ -40,13 +40,25 @@ export async function scrapePetbarn(url: string): Promise<number> {
       );
 
       if (activePromoDiv) {
-        const priceElement = activePromoDiv.querySelector(
+        let priceElement = activePromoDiv.querySelector(
           ".repeat-delivery__price"
         );
 
-        if (priceElement && priceElement.textContent) {
-          const priceText = priceElement.textContent?.trim() || ""; // Handle null textContent
-          return parseFloat(priceText.replace("$", "").replace(",", "")); // Clean up the price text and convert to number
+        if (priceElement) {
+          if (priceElement.textContent) {
+            const priceText = priceElement.textContent?.trim() || ""; // Handle null textContent
+            return parseFloat(priceText.replace("$", "").replace(",", "")); // Clean up the price text and convert to number
+          }
+        } else {
+          priceElement = activePromoDiv.querySelector(
+            ".member-price-block__price"
+          );
+          if (priceElement) {
+            if (priceElement.textContent) {
+              const priceText = priceElement.textContent?.trim() || ""; // Handle null textContent
+              return parseFloat(priceText.replace("$", "").replace(",", "")); // Clean up the price text and convert to number
+            }
+          }
         }
       }
 

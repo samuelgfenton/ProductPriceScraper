@@ -18,47 +18,36 @@ export async function scrapeBigWPrice(url: string): Promise<number> {
   const page = await browser.newPage();
 
   try {
-    // Navigate to the page and wait for the content to load
-    await page.goto(url, { waitUntil: "domcontentloaded" });
+    // Navigate to the URL
+    await page.goto(url, { waitUntil: "networkidle2" });
 
-    // Selectors for dollars and cents components of the price
-    const priceDollarsSelector = "span.dollars[data-testid='price-value']";
-    const priceCentsSelector = "sup.sup[data-testid='price-sup']";
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Wait for the price elements to be present in the DOM
-    await page.waitForSelector(priceDollarsSelector, { timeout: 5000 });
-
-    // Extract the dollars value
-    const priceDollarsElement = await page.$(priceDollarsSelector);
-    if (!priceDollarsElement) {
-      throw new Error(`Price dollars element not found on the page for Big W.`);
-    }
-    const priceDollarsText = await priceDollarsElement.evaluate(
-      (el) => el.textContent
+    // Select the element with class 'Price variant-huge' and inside it the span with 'data-testid="price-value"'
+    const priceElement = await page.$(
+      'span.Price.variant-huge span[data-testid="price-value"]'
     );
-    const dollars = parseInt(priceDollarsText?.replace(/[^0-9]/g, "") || "0");
 
-    // Default cents to 0 in case the element is not found
-    let cents = 0;
+    // Extract the dollars part
+    const dollars = await page.evaluate((el) => el!.textContent, priceElement);
 
-    // Check if the cents element exists before trying to extract its value
-    const priceCentsElement = await page.$(priceCentsSelector);
-    if (priceCentsElement) {
-      const priceCentsText = await priceCentsElement.evaluate(
-        (el) => el.textContent
-      );
-      cents = parseInt(priceCentsText?.replace(/[^0-9]/g, "") || "0");
-    } else {
-      console.log(
-        `Price cents element not found on the page for Big W. Assuming cents as 0.`
-      );
+    // Check if there is a span with class "extras" (for cents, if present within the same container)
+    const extrasElement = await page.$("span.Price.variant-huge span.extras");
+    let cents = "00"; // Default if cents part is missing
+    if (extrasElement) {
+      cents =
+        (await page.evaluate((el) => el.textContent, extrasElement)) ?? "00";
     }
 
-    // Combine dollars and cents into a single price
-    const price = dollars + cents / 100;
+    // Combine dollars and cents to get the full price as a float
+    let fullPrice: number | null = parseFloat(`${dollars}.${cents}`);
+    console.log(`Price as float: ${fullPrice}`);
 
-    await browser.close();
-    return price;
+    if (fullPrice == 0) {
+      fullPrice = null;
+    }
+
+    return fullPrice!;
   } catch (error) {
     await browser.close();
     console.error(`Error scraping price from URL: ${url} for Big W`, error);
