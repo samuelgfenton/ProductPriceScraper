@@ -37,6 +37,8 @@ export async function scrapeBigWPrice(url: string): Promise<number> {
     if (extrasElement) {
       cents =
         (await page.evaluate((el) => el.textContent, extrasElement)) ?? "00";
+      cents = cents.replace(".", "");
+      console.log(`cents as float: ${cents}`);
     }
 
     // Combine dollars and cents to get the full price as a float
@@ -46,11 +48,13 @@ export async function scrapeBigWPrice(url: string): Promise<number> {
     if (fullPrice == 0) {
       fullPrice = null;
     }
-
+    await browser.close();
     return fullPrice!;
   } catch (error) {
     await browser.close();
     console.error(`Error scraping price from URL: ${url} for Big W`, error);
     throw error;
+  } finally {
+    await browser.close(); // Ensure browser is closed in case of error
   }
 }

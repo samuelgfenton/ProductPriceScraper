@@ -4,6 +4,8 @@ import { scrapeBigWPrice } from "./bigWScraper"; // Import Big W scraper
 import { scrapeOfficeworksPrice } from "./officeworksScraper";
 import { scrapeChemistWarehouse } from "./chemistWarehouseScraper";
 import { scrapePetbarn } from "./PetbarnScraper";
+import { scrapeAmazonPrice } from "./amazonScraper";
+import { scrapeBudgetPetProducts } from "./budgetPetProductsScraper";
 
 // Define retailer ID constants
 const WOOLWORTHS_ID = "cQMPvKBQApSlqUcb0mOx";
@@ -13,6 +15,7 @@ const OFFICEWORKS_ID = "dSpScB3klFvWaH3C4eB9";
 const CHEMISTWAREHOUSE_ID = "DtrtCTkrrrlFqV3rN08x";
 const AMAZON_ID = "Z6AqQ3UZ1hV1AaRqWfKG";
 const PERTBARN_ID = "sr6V60ElxouvC8rzYCIj";
+const BUDGET_PET_PRODUCTS_ID = "9vOqdv0rlZ29ZZ0ZWDh9";
 
 // Function to scrape the price from the retailer's URL
 export async function scrapePrice(
@@ -36,6 +39,10 @@ export async function scrapePrice(
       return await scrapeChemistWarehouse(url);
     case PERTBARN_ID:
       return await scrapePetbarn(url);
+    case AMAZON_ID:
+      return await scrapeAmazonPrice(url);
+    case BUDGET_PET_PRODUCTS_ID:
+      return await scrapeBudgetPetProducts(url);
     default:
       throw new Error(`No scraper defined for retailer: ${retailerId}`);
   }
