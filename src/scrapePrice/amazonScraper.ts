@@ -1,48 +1,62 @@
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
-// Use the stealth plugin to avoid detection
+// Use stealth plugin to avoid detection.
 puppeteer.use(StealthPlugin());
 
 export async function scrapeAmazonPrice(url: string): Promise<number> {
   if (!url) {
-    throw new Error("Invalid URL provided for scraping.");
+    throw new Error("Invalid URL provided.");
   }
 
-  // Launch the browser in non-headless mode to avoid detection
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: false, // Set to false to see the browser in action
     defaultViewport: null,
   });
 
   const page = await browser.newPage();
 
   try {
-    // Navigate to the page
+    // Navigate to the page and wait for the content to load
     await page.goto(url, { waitUntil: "domcontentloaded" });
 
-    // Extract the price correctly by focusing on the span with the desired class
-    const visiblePrice = await page.evaluate(() => {
-      const priceElement = Array.from(document.querySelectorAll("span")).find(
-        (span) =>
-          span.classList.contains("dollars") &&
-          span.closest(".Price.variant-huge")
+    const { dollarText, fractionText, fullPrice } = await page.evaluate(() => {
+      const subscriptionElement = document.querySelector("#subscriptionPrice");
+
+      if (!subscriptionElement) {
+        throw new Error("Subscription price element not found.");
+      }
+
+      const priceElement = document.querySelector(
+        "#sns-base-price .a-price.a-text-normal"
       );
 
       if (!priceElement) {
-        throw new Error("Price element not found");
+        throw new Error("Price element inside subscription not found.");
       }
 
-      const dollars = priceElement.textContent?.trim() || "0";
-      const centsElement = priceElement.nextElementSibling;
-      const cents = centsElement?.textContent?.trim() || "00";
+      const dollarElement = priceElement.querySelector(".a-price-whole");
+      const fractionElement = priceElement.querySelector(".a-price-fraction");
 
-      return parseFloat(`${dollars}.${cents}`);
+      const dollarText =
+        dollarElement?.textContent?.replace(".", "").trim() || "0";
+      const fractionText = fractionElement?.textContent?.trim() || "00";
+
+      // Combine dollar and fraction values into a float number
+      const fullPrice = parseFloat(`${dollarText}.${fractionText}`);
+
+      // Return the values to be logged in Node.js
+      return { dollarText, fractionText, fullPrice };
     });
 
-    return visiblePrice;
+    // Now log the values in Node.js
+    console.log("Dollar element:", dollarText);
+    console.log("Fraction element:", fractionText);
+    console.log(`Extracted Price: $${fullPrice}`);
+
+    return fullPrice;
   } catch (error) {
-    console.error(`Error scraping price from URL: ${url}`, error);
+    console.error("Error scraping price:", error);
     throw error;
   } finally {
     await browser.close();
